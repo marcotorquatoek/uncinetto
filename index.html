@@ -2,11 +2,11 @@
 <html lang="it">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
 <meta name="theme-color" content="#1a1416">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>Contarighe</title>
-<!-- VERSIONE: 1.1 -->
+<!-- VERSIONE: 1.2 -->
 <!--
   SETUP SUPABASE (opzionale). Esegui nel SQL Editor:
 
@@ -25,7 +25,9 @@
 -->
 <style>
 :root{--bg:#1a1416;--card:#271e21;--card2:#33282c;--text:#f6ecee;--muted:#a8969b;--accent:#e58aa3;--accent2:#c96b87}
-*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+button{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+input,textarea{font-size:16px}
 html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
 body{padding:env(safe-area-inset-top) 16px env(safe-area-inset-bottom);max-width:520px;margin:0 auto}
 header{display:flex;align-items:center;gap:10px;padding:14px 0}
@@ -37,7 +39,7 @@ button{font:inherit;color:inherit;border:0;cursor:pointer}
 .item b{font-size:1.05rem}
 .item span{background:var(--card2);padding:6px 12px;border-radius:999px;color:var(--accent);font-weight:600}
 .empty{color:var(--muted);text-align:center;margin:40px 0}
-input.name{flex:1;min-width:0;background:transparent;border:0;color:var(--text);font-size:1.3rem;font-weight:700;outline:none}
+input.name{flex:1;min-width:0;background:transparent;border:0;color:var(--text);font-size:21px;font-weight:700;outline:none}
 textarea{width:100%;min-height:110px;background:var(--card);color:var(--text);border:0;border-radius:14px;padding:12px;font:inherit;resize:vertical;outline:none}
 .counter{display:flex;flex-direction:column;align-items:center;margin:18px 0}
 .num{font-size:6.5rem;font-weight:800;line-height:1;margin:10px 0 18px;color:var(--accent);font-variant-numeric:tabular-nums}
@@ -86,7 +88,15 @@ textarea{width:100%;min-height:110px;background:var(--card);color:var(--text);bo
 <div id="status"></div>
 
 <script>
-const VERSION = "1.1";
+const VERSION = "1.2";
+// blocca lo zoom (pinch e doppio tap) su iOS
+["gesturestart", "gesturechange", "gestureend"].forEach(ev => document.addEventListener(ev, e => e.preventDefault()));
+let lastTouch = 0;
+document.addEventListener("touchend", e => {
+  const now = Date.now();
+  if (now - lastTouch < 350 && e.target.closest("button")) e.preventDefault();
+  lastTouch = now;
+}, { passive: false });
 // ---- Configurazione Supabase (lascia vuoto per usare solo il salvataggio locale) ----
 const SUPABASE_URL = "https://zdwzombpaixkcryfpkxg.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpkd3pvbWJwYWl4a2NyeWZwa3hnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE3MzczMTAsImV4cCI6MjA5NzMxMzMxMH0.ttAPvk-kV_BWC8RH43eVNXsN6HglLIQhp0rieWwjGPw";
