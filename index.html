@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#1a1416">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Contarighe</title>
+<!-- VERSIONE: 1.0 -->
+<!--
+  SETUP SUPABASE (opzionale). Esegui nel SQL Editor:
+
+  create table projects (
+    id text primary key,
+    name text,
+    notes text,
+    count int default 0,
+    deleted boolean default false,
+    updated_at bigint
+  );
+  alter table projects enable row level security;
+  create policy "open" on projects for all using (true) with check (true);
+
+  Poi compila SUPABASE_URL e SUPABASE_KEY (anon key) qui sotto.
+-->
+<style>
+:root{--bg:#1a1416;--card:#271e21;--card2:#33282c;--text:#f6ecee;--muted:#a8969b;--accent:#e58aa3;--accent2:#c96b87}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+body{padding:env(safe-area-inset-top) 16px env(safe-area-inset-bottom);max-width:520px;margin:0 auto}
+header{display:flex;align-items:center;gap:10px;padding:14px 0}
+header h1{font-size:1.4rem;margin:0;flex:1}
+button{font:inherit;color:inherit;border:0;cursor:pointer}
+.icon{background:var(--card);width:42px;height:42px;border-radius:50%;font-size:1.2rem}
+.primary{background:var(--accent);color:#2a1319;font-weight:600;padding:14px 18px;border-radius:14px;width:100%}
+.item{display:flex;align-items:center;justify-content:space-between;background:var(--card);padding:16px;border-radius:16px;margin-bottom:10px;cursor:pointer}
+.item b{font-size:1.05rem}
+.item span{background:var(--card2);padding:6px 12px;border-radius:999px;color:var(--accent);font-weight:600}
+.empty{color:var(--muted);text-align:center;margin:40px 0}
+input.name{flex:1;min-width:0;background:transparent;border:0;color:var(--text);font-size:1.3rem;font-weight:700;outline:none}
+textarea{width:100%;min-height:110px;background:var(--card);color:var(--text);border:0;border-radius:14px;padding:12px;font:inherit;resize:vertical;outline:none}
+.counter{display:flex;flex-direction:column;align-items:center;margin:18px 0}
+.num{font-size:6.5rem;font-weight:800;line-height:1;margin:10px 0 18px;color:var(--accent);font-variant-numeric:tabular-nums}
+.label{color:var(--muted);font-size:.9rem;text-transform:uppercase;letter-spacing:.1em}
+.btns{display:flex;gap:12px;width:100%}
+.minus{background:var(--card2);width:30%;height:96px;border-radius:22px;font-size:2.4rem}
+.plus{background:var(--accent);color:#2a1319;flex:1;height:96px;border-radius:22px;font-size:3rem;font-weight:700}
+.plus:active{background:var(--accent2)}
+.minus:active{background:var(--card)}
+.row{display:flex;gap:10px;margin-top:16px}
+.row button{flex:1;background:var(--card);padding:12px;border-radius:12px;color:var(--muted)}
+.danger{color:#ff8a8a!important}
+#status{font-size:.75rem;color:var(--muted);text-align:center;margin:18px 0 10px}
+.hidden{display:none}
+</style>
+</head>
+<body>
+
+<div id="list">
+  <header><h1>🧶 I miei progetti</h1></header>
+  <div id="items"></div>
+  <button class="primary" id="newBtn">+ Nuovo progetto</button>
+</div>
+
+<div id="detail" class="hidden">
+  <header>
+    <button class="icon" id="back">←</button>
+    <input class="name" id="pname" placeholder="Nome progetto">
+  </header>
+  <div class="label">Note</div>
+  <textarea id="pnotes" placeholder="Misure, uncinetto, filato, punti..."></textarea>
+  <div class="counter">
+    <div class="label">Riga</div>
+    <div class="num" id="num">0</div>
+    <div class="btns">
+      <button class="minus" id="minus">−</button>
+      <button class="plus" id="plus">+</button>
+    </div>
+  </div>
+  <div class="row">
+    <button id="reset">Azzera</button>
+    <button id="del" class="danger">Elimina progetto</button>
+  </div>
+</div>
+
+<div id="status"></div>
+
+<script>
+const VERSION = "1.0";
+// ---- Configurazione Supabase (lascia vuoto per usare solo il salvataggio locale) ----
+const SUPABASE_URL = "";
+const SUPABASE_KEY = "";
+// -------------------------------------------------------------------------------------
+
+const KEY = "contarighe_v1";
+const $ = id => document.getElementById(id);
+const cloud = !!(SUPABASE_URL && SUPABASE_KEY);
+let projects = [];
+let current = null;
+let wake = null;
+
+try { projects = JSON.parse(localStorage.getItem(KEY) || "[]"); } catch (e) { projects = []; }
+
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+const saveLocal = () => { try { localStorage.setItem(KEY, JSON.stringify(projects)); } catch (e) {} };
+const setStatus = t => $("status").textContent = t + (t ? " · " : "") + "v" + VERSION;
+
+// ---------- Supabase ----------
+const H = { apikey: SUPABASE_KEY, Authorization: "Bearer " + SUPABASE_KEY, "Content-Type": "application/json" };
+const pending = new Map();
+let timer = null;
+
+function queuePush(p) {
+  saveLocal();
+  if (!cloud) return;
+  pending.set(p.id, p);
+  setStatus("Salvataggio…");
+  clearTimeout(timer);
+  timer = setTimeout(flush, 600);
+}
+async function flush() {
+  if (!pending.size) return;
+  const batch = [...pending.values()];
+  try {
+    const r = await fetch(SUPABASE_URL + "/rest/v1/projects", {
+      method: "POST",
+      headers: { ...H, Prefer: "resolution=merge-duplicates,return=minimal" },
+      body: JSON.stringify(batch)
+    });
+    if (!r.ok) throw new Error(r.status);
+    batch.forEach(p => { if (pending.get(p.id) === p) pending.delete(p.id); });
+    setStatus("Sincronizzato ✓");
+  } catch (e) { setStatus("Offline – riprovo"); setTimeout(flush, 5000); }
+}
+async function pull() {
+  if (!cloud) { setStatus("Solo locale"); return; }
+  try {
+    const r = await fetch(SUPABASE_URL + "/rest/v1/projects?select=*", { headers: H });
+    if (!r.ok) throw new Error(r.status);
+    const remote = await r.json();
+    const map = new Map(projects.map(p => [p.id, p]));
+    remote.forEach(rp => {
+      const lp = map.get(rp.id);
+      if (!lp || (rp.updated_at || 0) > (lp.updated_at || 0)) map.set(rp.id, rp);
+    });
+    projects = [...map.values()];
+    saveLocal();
+    projects.forEach(p => {
+      const rp = remote.find(x => x.id === p.id);
+      if (!rp || (p.updated_at || 0) > (rp.updated_at || 0)) pending.set(p.id, p);
+    });
+    await flush();
+    if (!pending.size) setStatus("Sincronizzato ✓");
+    if (current) { const c = projects.find(p => p.id === current.id); if (c && !pending.has(c.id)) { current = c; renderDetail(); } }
+    renderList();
+  } catch (e) { setStatus("Offline"); }
+}
+
+// ---------- UI ----------
+function touch(p) { p.updated_at = Date.now(); queuePush(p); }
+
+function renderList() {
+  const live = projects.filter(p => !p.deleted).sort((a, b) => (b.updated_at || 0) - (a.updated_at || 0));
+  $("items").innerHTML = live.length ? "" : '<div class="empty">Nessun progetto. Creane uno! 🧵</div>';
+  live.forEach(p => {
+    const d = document.createElement("div");
+    d.className = "item";
+    d.innerHTML = "<b></b><span>riga " + (p.count || 0) + "</span>";
+    d.querySelector("b").textContent = p.name || "Senza nome";
+    d.onclick = () => openProject(p.id);
+    $("items").appendChild(d);
+  });
+}
+function renderDetail() {
+  $("pname").value = current.name || "";
+  $("pnotes").value = current.notes || "";
+  $("num").textContent = current.count || 0;
+}
+function openProject(id) {
+  current = projects.find(p => p.id === id);
+  renderDetail();
+  $("list").classList.add("hidden");
+  $("detail").classList.remove("hidden");
+  keepAwake();
+}
+function closeProject() {
+  current = null;
+  $("detail").classList.add("hidden");
+  $("list").classList.remove("hidden");
+  renderList();
+}
+async function keepAwake() {
+  try { if ("wakeLock" in navigator) wake = await navigator.wakeLock.request("screen"); } catch (e) {}
+}
+function bump(n) {
+  current.count = Math.max(0, (current.count || 0) + n);
+  $("num").textContent = current.count;
+  if (navigator.vibrate) navigator.vibrate(15);
+  touch(current);
+}
+
+$("newBtn").onclick = () => {
+  const p = { id: uid(), name: "Nuovo progetto", notes: "", count: 0, deleted: false, updated_at: Date.now() };
+  projects.push(p); queuePush(p); openProject(p.id);
+  $("pname").focus(); $("pname").select();
+};
+$("back").onclick = closeProject;
+$("plus").onclick = () => bump(1);
+$("minus").onclick = () => bump(-1);
+$("pname").oninput = e => { current.name = e.target.value; touch(current); };
+$("pnotes").oninput = e => { current.notes = e.target.value; touch(current); };
+$("reset").onclick = () => { if (confirm("Azzerare il contatore?")) { current.count = 0; $("num").textContent = 0; touch(current); } };
+$("del").onclick = () => { if (confirm("Eliminare questo progetto?")) { current.deleted = true; touch(current); closeProject(); } };
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") { if (current) keepAwake(); pull(); }
+});
+
+renderList();
+setStatus(cloud ? "Connessione…" : "Solo locale");
+pull();
+</script>
+</body>
+</html>
